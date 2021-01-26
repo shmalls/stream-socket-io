@@ -14,11 +14,16 @@ const io = require('socket.io')(http, config);
 const index = require("./routes/index");
 const port = process.env.PORT || 4001;
 
-const PLAYER_STATE = 'PLAYER_STATE';
-const PAUSE_VIDEO = 'PAUSE_VIDEO';
-const PLAY_VIDEO = 'PLAY_VIDEO';
-const ADD_VIDEO = 'ADD_VIDEO';
-const STOP_VIDEO = 'STOP_VIDEO';
+const CLIENT_PAUSE_VIDEO = 'CLIENT_PAUSE_VIDEO';
+const CLIENT_PLAY_VIDEO = 'CLIENT_PLAY_VIDEO';
+const CLIENT_ADD_VIDEO = 'CLIENT_ADD_VIDEO';
+const CLIENT_STOP_VIDEO = 'CLIENT_STOP_VIDEO';
+
+const SERVER_INIT_PLAYER = 'SERVER_INIT_PLAYER';
+const SERVER_PAUSE_VIDEO = 'SERVER_PAUSE_VIDEO';
+const SERVER_PLAY_VIDEO = 'SERVER_PLAY_VIDEO';
+const SERVER_ADD_VIDEO = 'SERVER_ADD_VIDEO';
+const SERVER_STOP_VIDEO = 'SERVER_STOP_VIDEO';
 
 app.use(cors())
 app.use(index);
@@ -56,7 +61,7 @@ function stopVideo() {
 
 function log(event, id) {
     switch(event) {
-        case PLAYER_STATE:
+        case SERVER_INIT_PLAYER:
             console.log(`emitting ${event} of { playing: ${player.playing}, time: ${player.time} } for new connection ${id}`);
             break;
         default:
@@ -66,34 +71,34 @@ function log(event, id) {
 
 io.on("connection", (socket) => {
     // upon new connection, send out current player state
-    log(PLAYER_STATE, socket.id);
-    socket.emit(PLAYER_STATE, player);
+    log(SERVER_INIT_PLAYER, socket.id);
+    socket.emit(SERVER_INIT_PLAYER, player);
 
     // listen for pause event
-    socket.on(PAUSE_VIDEO, () => {
-        log(PAUSE_VIDEO, socket.id);
-        socket.broadcast.emit(PAUSE_VIDEO);
+    socket.on(CLIENT_PAUSE_VIDEO, () => {
+        log(CLIENT_PAUSE_VIDEO, socket.id);
+        socket.broadcast.emit(SERVER_PAUSE_VIDEO);
         pauseVideo();
     })
 
     // listen for play
-    socket.on(PLAY_VIDEO, () => {
-        log(PLAY_VIDEO, socket.id);
-        socket.broadcast.emit(PLAY_VIDEO);
+    socket.on(CLIENT_PLAY_VIDEO, () => {
+        log(CLIENT_PLAY_VIDEO, socket.id);
+        socket.broadcast.emit(SERVER_PLAY_VIDEO);
         startVideo();
     })
 
     // listen for stop
-    socket.on(STOP_VIDEO, () => {
-        log(STOP_VIDEO, socket.id);
-        socket.broadcast.emit(STOP_VIDEO);
+    socket.on(CLIENT_STOP_VIDEO, () => {
+        log(CLIENT_STOP_VIDEO, socket.id);
+        socket.broadcast.emit(SERVER_STOP_VIDEO);
         stopVideo();
     })
 
     // listen for new video
-    socket.on(ADD_VIDEO, (video) => {
-        log(ADD_VIDEO, socket.id);
-        socket.broadcast.emit(ADD_VIDEO, video);
+    socket.on(CLIENT_ADD_VIDEO, (video) => {
+        log(CLIENT_ADD_VIDEO, socket.id);
+        socket.broadcast.emit(SERVER_ADD_VIDEO, video);
         startVideo(true);
     })
 });
