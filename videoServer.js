@@ -13,93 +13,153 @@ const http = require('http').createServer(app);
 const io = require('socket.io')(http, config);
 const index = require("./routes/index");
 const port = process.env.PORT || 4001;
+const RECEIVING = "RECEIVING"
+const SENDING = "SENDING";
+const POST = 'POST';
+const GET = 'GET';
 
-const CLIENT_PAUSE_VIDEO = 'CLIENT_PAUSE_VIDEO';
-const CLIENT_PLAY_VIDEO = 'CLIENT_PLAY_VIDEO';
-const CLIENT_ADD_VIDEO = 'CLIENT_ADD_VIDEO';
-const CLIENT_STOP_VIDEO = 'CLIENT_STOP_VIDEO';
+const CLIENT_PAUSE_VIDEO = { id: 'CLIENT_PAUSE_VIDEO', type: RECEIVING };
+const CLIENT_PLAY_VIDEO = { id: 'CLIENT_PLAY_VIDEO', type: RECEIVING };
+const CLIENT_SEEK_VIDEO = { id: 'CLIENT_SEEK_VIDEO', type: RECEIVING };
+const CLIENT_ADD_VIDEO = { id: 'CLIENT_ADD_VIDEO', type: RECEIVING };
+const CLIENT_STOP_VIDEO = { id: 'CLIENT_STOP_VIDEO', type: RECEIVING };
+const CLIENT_GET_PLAYER = { id: 'CLIENT_GET_PLAYER', type: RECEIVING };
 
-const SERVER_INIT_PLAYER = 'SERVER_INIT_PLAYER';
-const SERVER_PAUSE_VIDEO = 'SERVER_PAUSE_VIDEO';
-const SERVER_PLAY_VIDEO = 'SERVER_PLAY_VIDEO';
-const SERVER_ADD_VIDEO = 'SERVER_ADD_VIDEO';
-const SERVER_STOP_VIDEO = 'SERVER_STOP_VIDEO';
+const SERVER_INIT_PLAYER = { id: 'SERVER_INIT_PLAYER', type: SENDING };
+const SERVER_PAUSE_VIDEO = { id: 'SERVER_PAUSE_VIDEO', type: SENDING };
+const SERVER_SEEK_VIDEO = { id: 'SERVER_SEEK_VIDEO', type: SENDING };
+const SERVER_PLAY_VIDEO = { id: 'SERVER_PLAY_VIDEO', type: SENDING };
+const SERVER_ADD_VIDEO = { id: 'SERVER_ADD_VIDEO', type: SENDING };
+const SERVER_STOP_VIDEO = { id: 'SERVER_STOP_VIDEO', type: SENDING };
+const SERVER_PLAYER_STATE = { id: 'SERVER_PLAYER_STATE', type: SENDING };
 
 app.use(cors())
 app.use(index);
 
-let player = {
+var player = {
     playing: false,
-    time: 0
+    time: 0,
+    started: false
 };
 
-function startVideo(newVideo = false) {
+function startVideo(socket, newVideo = false) {
     if (newVideo) {
         player.time = 0;
     }
-
-    let interval = setInterval(tick, 1000);
-
-    function tick() {
-        if (player.playing) {
-            player.time++;
-            console.log(player.time);
-        } else {
-            clearInterval(interval);
-        }
+    if(!player.playing) {
+        player.playing = true;
+        player.started = true;
+        let interval = setInterval(() =>{
+            if (player.playing) {
+                player.time++;
+                emitLog(socket, SERVER_PLAYER_STATE, player)
+            } else {
+                clearInterval(interval);
+            }
+        }, 1000);
+    }
+    else {
+        return;
     }
 }
 
-function pauseVideo() {
+function pauseVideo(time) {
     player.playing = false;
+    player.time = Math.round(time);
+    console.log("pauseVideo",JSON.stringify(player));
 }
 
 function stopVideo() {
     player.playing = false;
     player.time = 0;
+    console.log("stopVideo",JSON.stringify(player));
 }
 
-function log(event, id) {
-    switch(event) {
-        case SERVER_INIT_PLAYER:
-            console.log(`emitting ${event} of { playing: ${player.playing}, time: ${player.time} } for new connection ${id}`);
-            break;
-        default:
-            console.log(`emitting ${event} for connection ${id}`);
+function seekTo(time) {
+    player.time = time;
+}
+
+function log(event, id, data, method, callback) {
+        switch(event.type) {
+            case SENDING:
+                console.log(`Sending event ${method} ${event.id} triggered by ${id} with data ${JSON.stringify(data)} and callback`);
+                break;
+            case RECEIVING:
+                console.log(`Received event ${method} ${event.id} from player ${id} with data ${JSON.stringify(data)} and callback`);
+                break;
+        }
+}
+
+function emitLog(socket, event, data, broadcast = false, callback) {
+    log(event, socket.id, data, POST);
+    if(callback) {
+        socket.emit(event.id, data, callback)
+    } else if(broadcast) {
+        socket.broadcast.emit(event.id, data, callback)
+    } else {
+        socket.emit(event.id, data);
     }
 }
 
 io.on("connection", (socket) => {
     // upon new connection, send out current player state
-    log(SERVER_INIT_PLAYER, socket.id);
-    socket.emit(SERVER_INIT_PLAYER, player);
+    //log(SERVER_INIT_PLAYER, socket.id, player);
+    //emitLog(socket, SERVER_INIT_PLAYER, player);
 
     // listen for pause event
-    socket.on(CLIENT_PAUSE_VIDEO, () => {
-        log(CLIENT_PAUSE_VIDEO, socket.id);
-        socket.broadcast.emit(SERVER_PAUSE_VIDEO);
-        pauseVideo();
-    })
+    socket.on(CLIENT_PAUSE_VIDEO.id, (method, data, callback) => {
+        log(CLIENT_PAUSE_VIDEO, socket.id, data, method, callback);
+        switch(method) {
+            case POST:
+                pauseVideo(data.time);
+                emitLog(socket, SERVER_PAUSE_VIDEO, player, true, callback);
+                emitLog(socket, SERVER_PAUSE_VIDEO, player, true);
+                callback(null, player)
+                break;
+            case GET:
+                callback(null, player);
+                break;
+        }
+    });
 
     // listen for play
-    socket.on(CLIENT_PLAY_VIDEO, () => {
-        log(CLIENT_PLAY_VIDEO, socket.id);
-        socket.broadcast.emit(SERVER_PLAY_VIDEO);
-        startVideo();
-    })
+    socket.on(CLIENT_PLAY_VIDEO.id, (method, data, callback) => {
+        log(CLIENT_PLAY_VIDEO, socket.id, data, method, callback);
+        switch(method) {
+            case POST:
+                startVideo(socket);
+                emitLog(socket, SERVER_PLAY_VIDEO, player, true)
+                callback(null, player)
+                break;
+            case GET: 
+                callback(null, player);
+                break;
+        }
+    });
+
+    socket.on(CLIENT_SEEK_VIDEO.id, (method, data, callback) => {
+        log(CLIENT_SEEK_VIDEO, socket.id, data, method, callback);
+        switch(method) {
+            case POST:
+                seekTo(Math.abs(data.time));
+                emitLog(socket, SERVER_SEEK_VIDEO, player, true, callback);
+                callback(null, player);
+                break;
+        }
+    });
 
     // listen for stop
-    socket.on(CLIENT_STOP_VIDEO, () => {
-        log(CLIENT_STOP_VIDEO, socket.id);
-        socket.broadcast.emit(SERVER_STOP_VIDEO);
+    socket.on(CLIENT_STOP_VIDEO.id, (clientPlayer) => {
+        log(CLIENT_STOP_VIDEO, socket.id, clientPlayer);
+        emitLog(socket, SERVER_STOP_VIDEO, player, true);
         stopVideo();
     })
 
     // listen for new video
-    socket.on(CLIENT_ADD_VIDEO, (video) => {
-        log(CLIENT_ADD_VIDEO, socket.id);
-        socket.broadcast.emit(SERVER_ADD_VIDEO, video);
-        startVideo(true);
+    socket.on(CLIENT_ADD_VIDEO.id, (video) => {
+        log(CLIENT_ADD_VIDEO, socket.id, video);
+        emitLog(socket, SERVER_ADD_VIDEO, video, true);
+        startVideo(socket, true);
     })
 });
 
