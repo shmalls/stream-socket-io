@@ -42,9 +42,12 @@ var player = {
     started: false
 };
 
-function startVideo(socket, newVideo = false) {
+function startVideo(socket, newVideo = false, time) {
     if (newVideo) {
         player.time = 0;
+    }
+    if(time) {
+        player.time = time;
     }
     if(!player.playing) {
         player.playing = true;
@@ -135,7 +138,7 @@ io.on("connection", (socket) => {
         log(CLIENT_PLAY_VIDEO, socket.id, data, method, callback);
         switch(method) {
             case POST:
-                if(player.playing === false) startVideo(socket);
+                if(player.playing === false) startVideo(socket, false, data.time);
                 emitLog(socket, SERVER_PLAY_VIDEO, {...player, eventFromServer: buildEvent('PLAY',player)}, true)
                 callback(null, player)
                 break;
