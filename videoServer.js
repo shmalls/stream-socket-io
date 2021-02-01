@@ -52,7 +52,7 @@ function startVideo(socket, newVideo = false) {
         let interval = setInterval(() =>{
             if (player.playing) {
                 player.time++;
-                emitLog(socket, SERVER_PLAYER_STATE, player)
+                // emitLog(socket, SERVER_PLAYER_STATE, player)
             } else {
                 clearInterval(interval);
             }
@@ -90,21 +90,30 @@ function log(event, id, data, method, callback) {
         }
 }
 
-function emitLog(socket, event, data, broadcast = false, callback) {
+function emitLog(socket, event, data, broadcast = false) {
     log(event, socket.id, data, POST);
-    if(callback) {
-        socket.emit(event.id, data, callback)
-    } else if(broadcast) {
-        socket.broadcast.emit(event.id, data, callback)
+    if(broadcast) {
+        socket.broadcast.emit(event.id, data)
     } else {
         socket.emit(event.id, data);
     }
+}
+
+function buildEvent(event, player) {
+    return { type: event, player: {...player}, timeStamp: Date.now()}
 }
 
 io.on("connection", (socket) => {
     // upon new connection, send out current player state
     //log(SERVER_INIT_PLAYER, socket.id, player);
     //emitLog(socket, SERVER_INIT_PLAYER, player);
+    // let playerStateInterval = setInterval(() =>{
+    //     if (socket.connected) {
+    //         emitLog(socket, SERVER_PLAYER_STATE, player)
+    //     } else {
+    //         clearInterval(playerStateInterval);
+    //     }
+    // }, 1000);
 
     // listen for pause event
     socket.on(CLIENT_PAUSE_VIDEO.id, (method, data, callback) => {
@@ -112,8 +121,7 @@ io.on("connection", (socket) => {
         switch(method) {
             case POST:
                 pauseVideo(data.time);
-                emitLog(socket, SERVER_PAUSE_VIDEO, player, true, callback);
-                emitLog(socket, SERVER_PAUSE_VIDEO, player, true);
+                emitLog(socket, SERVER_PAUSE_VIDEO, {...player, eventFromServer: buildEvent('PAUSE',player)}, true);
                 callback(null, player)
                 break;
             case GET:
@@ -127,8 +135,8 @@ io.on("connection", (socket) => {
         log(CLIENT_PLAY_VIDEO, socket.id, data, method, callback);
         switch(method) {
             case POST:
-                startVideo(socket);
-                emitLog(socket, SERVER_PLAY_VIDEO, player, true)
+                if(player.playing === false) startVideo(socket);
+                emitLog(socket, SERVER_PLAY_VIDEO, {...player, eventFromServer: buildEvent('PLAY',player)}, true)
                 callback(null, player)
                 break;
             case GET: 
