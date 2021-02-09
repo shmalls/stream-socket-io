@@ -9,6 +9,8 @@ const config = {
         credentials: true
     }
 }
+const Mutex = require('async-mutex').Mutex;
+
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, config);
 const index = require("./routes/index");
@@ -32,6 +34,8 @@ const SERVER_PLAY_VIDEO = { id: 'SERVER_PLAY_VIDEO', type: SENDING };
 const SERVER_ADD_VIDEO = { id: 'SERVER_ADD_VIDEO', type: SENDING };
 const SERVER_STOP_VIDEO = { id: 'SERVER_STOP_VIDEO', type: SENDING };
 const SERVER_PLAYER_STATE = { id: 'SERVER_PLAYER_STATE', type: SENDING };
+
+const mutex = new Mutex();
 
 app.use(cors())
 app.use(index);
@@ -102,8 +106,8 @@ function emitLog(socket, event, data, broadcast = false) {
     }
 }
 
-function buildEvent(event, player) {
-    return { type: event, player: {...player}, timeStamp: Date.now()}
+function buildEvent(event, player, triggerer) {
+    return { type: event, player: {...player}, timeStamp: Date.now(), triggerer: triggerer}
 }
 
 io.on("connection", (socket) => {
@@ -123,9 +127,12 @@ io.on("connection", (socket) => {
         log(CLIENT_PAUSE_VIDEO, socket.id, data, method, callback);
         switch(method) {
             case POST:
-                pauseVideo(data.time);
-                emitLog(socket, SERVER_PAUSE_VIDEO, {...player, eventFromServer: buildEvent('PAUSE',player)}, true);
-                callback(null, player)
+                mutex.acquire().then((release)=>{
+                    pauseVideo(data.time);
+                    emitLog(socket, SERVER_PAUSE_VIDEO, {...player, eventFromServer: buildEvent('PAUSE',player, socket.id)}, true);
+                    callback(null, player);
+                    release();
+                });
                 break;
             case GET:
                 callback(null, player);
@@ -139,32 +146,35 @@ io.on("connection", (socket) => {
         switch(method) {
             case POST:
                 if(player.playing === false) startVideo(socket, false, data.time);
-                emitLog(socket, SERVER_PLAY_VIDEO, {...player, eventFromServer: buildEvent('PLAY',player)}, true)
-                callback(null, player)
+                mutex.acquire().then((release)=> {
+                    emitLog(socket, SERVER_PLAY_VIDEO, {...player, eventFromServer: buildEvent('PLAY',player, socket.id)}, true)
+                    callback(null, player)
+                    release();
+                });
                 break;
             case GET: 
-                callback(null, player);
+                callback(null, {...player, id: socket.id});
                 break;
         }
     });
 
-    socket.on(CLIENT_SEEK_VIDEO.id, (method, data, callback) => {
-        log(CLIENT_SEEK_VIDEO, socket.id, data, method, callback);
-        switch(method) {
-            case POST:
-                seekTo(Math.abs(data.time));
-                emitLog(socket, SERVER_SEEK_VIDEO, player, true, callback);
-                callback(null, player);
-                break;
-        }
-    });
+    // socket.on(CLIENT_SEEK_VIDEO.id, (method, data, callback) => {
+    //     log(CLIENT_SEEK_VIDEO, socket.id, data, method, callback);
+    //     switch(method) {
+    //         case POST:
+    //             seekTo(Math.abs(data.time));
+    //             emitLog(socket, SERVER_SEEK_VIDEO, player, true, callback);
+    //             callback(null, player);
+    //             break;
+    //     }
+    // });
 
     // listen for stop
-    socket.on(CLIENT_STOP_VIDEO.id, (clientPlayer) => {
-        log(CLIENT_STOP_VIDEO, socket.id, clientPlayer);
-        emitLog(socket, SERVER_STOP_VIDEO, player, true);
-        stopVideo();
-    })
+    // socket.on(CLIENT_STOP_VIDEO.id, (clientPlayer) => {
+    //     log(CLIENT_STOP_VIDEO, socket.id, clientPlayer);
+    //     emitLog(socket, SERVER_STOP_VIDEO, player, true);
+    //     stopVideo();
+    // })
 
     // listen for new video
     socket.on(CLIENT_ADD_VIDEO.id, (video) => {
