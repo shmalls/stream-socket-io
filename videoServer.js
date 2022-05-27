@@ -3,7 +3,8 @@ const cors = require('cors');
 const { Socket } = require('dgram');
 const config = {
     cors: {
-        origin: "http://shmalls.pw",
+        // origin: "http://shmalls.pw",
+        origin: "http://localhost:3001",
         methods: ["GET", "POST"],
         allowedHeaders: ['custom-headers'],
         credentials: true
@@ -19,6 +20,9 @@ const RECEIVING = "RECEIVING"
 const SENDING = "SENDING";
 const POST = 'POST';
 const GET = 'GET';
+
+const TAKE_CONTROL_EVENT = { id: 'TAKE_CONTROL', type: RECEIVING}
+
 
 const CLIENT_PAUSE_VIDEO = { id: 'CLIENT_PAUSE_VIDEO', type: RECEIVING };
 const CLIENT_PLAY_VIDEO = { id: 'CLIENT_PLAY_VIDEO', type: RECEIVING };
@@ -181,6 +185,12 @@ io.on("connection", (socket) => {
         log(CLIENT_ADD_VIDEO, socket.id, video);
         emitLog(socket, SERVER_ADD_VIDEO, video, true);
         startVideo(socket, true);
+    })
+
+    socket.on(TAKE_CONTROL_EVENT.id, () => {
+        log(TAKE_CONTROL_EVENT, socket.id);
+        // emitLog(socket, TAKE_CONTROL_EVENT, video, true);
+        // startVideo(socket, true);
     })
 });
 
